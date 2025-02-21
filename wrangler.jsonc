@@ -23,6 +23,8 @@
    * https://developers.cloudflare.com/workers/runtime-apis/bindings/
    */
 
+  "d1_databases": [{ "binding": "DB", "database_name": "cf-paste-bin", "database_id": "a192574b-543a-415b-9eab-1b5f9f701b12" }],
+
   /**
    * Environment Variables
    * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
@@ -37,7 +39,7 @@
    * Static Assets
    * https://developers.cloudflare.com/workers/static-assets/binding/
    */
-  "assets": { "directory": "./public/", "binding": "ASSETS", "run_worker_first": true }
+  "assets": { "directory": "./src/public/", "binding": "ASSETS", "run_worker_first": true }
 
   /**
    * Service Bindings (communicate between multiple Workers)
