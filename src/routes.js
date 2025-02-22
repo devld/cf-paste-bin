@@ -76,6 +76,10 @@ const routes = [
         return { status: 404 }
       }
 
+      if (item.expiredAt && item.expiredAt.isBefore(dayjs())) {
+        return { status: 410 }
+      }
+
       if (type === 'u') {
         const url = item.content.trim()
         if (isValidURL(item.content)) {
