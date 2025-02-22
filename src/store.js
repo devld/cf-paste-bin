@@ -1,5 +1,10 @@
 /// <reference path="../node_modules/@cloudflare/workers-types/index.d.ts" />
 
+import dayjs, { Dayjs } from 'dayjs'
+import { PasteBinItemExistsError, APIError, PasteBinItemNotFoundError } from './error'
+
+const PASTE_BIN_ITEMS_TABLE = 'paste_bin_items'
+
 export default class Store {
   /** @type {D1Database} */
   #db
@@ -10,10 +15,80 @@ export default class Store {
 
   /**
    * @param {string} key
-   * @returns {Promise<PasteBinItem | null>}
+   * @returns {Promise<PasteBinItem>}
+   * @throws {PasteBinItemNotFoundError}
    */
-  getPasteBinItem(key) {
+  async getPasteBinItem(key) {
+    const record = await this.#db.prepare(`SELECT * FROM ${PASTE_BIN_ITEMS_TABLE} WHERE key = ?`).bind(key).first()
+    if (!record) throw new PasteBinItemNotFoundError(`paste bin item with key '${key}' not found`)
+    return this.#recordToPasteBinItem(record)
+  }
 
+  /**
+   * @param {Omit<PasteBinItem, 'createdAt'>} item
+   * @returns {Promise<PasteBinItem>}
+   * @throws {PasteBinItemExistsError}
+   */
+  async createPasteBinItem(item) {
+    try {
+      /** @type {PasteBinItem} */
+      const newItem = { ...item, createdAt: dayjs() }
+      await this.#db
+        .prepare(
+          `INSERT INTO ${PASTE_BIN_ITEMS_TABLE}(\`key\`, \`content\`, \`admin_password\`, \`created_at\`, \`expired_at\`) VALUES(?, ?, ?, ?, ?)`
+        )
+        .bind(
+          newItem.key,
+          newItem.content,
+          newItem.adminPassword,
+          newItem.createdAt.toDate().getTime(),
+          newItem.expiredAt?.toDate().getTime() || null
+        )
+        .run()
+      return newItem
+    } catch (e) {
+      if (e.message.includes('D1_ERROR: UNIQUE constraint')) {
+        return new PasteBinItemExistsError(`paste bin item with key '${item.key}' already exists`)
+      }
+      return new APIError(e.message, { cause: e })
+    }
+  }
+
+  /**
+   * @param {Partial<Pick<PasteBinItem, 'content' | 'expiredAt'>> & Pick<PasteBinItem, 'key'>} item
+   * @returns {Promise<PasteBinItem>}
+   * @throws {PasteBinItemNotFoundError}
+   */
+  async updatePasteBinItem(item) {
+    /** @type {[string, any][]} */
+    const changes = []
+    if (item.content !== undefined) changes.push(['content', item.content])
+    if (item.expiredAt !== undefined) changes.push(['expired_at', item.expiredAt?.toDate().getTime() || null])
+
+    /** @type {D1Response} */
+    const result = await this.#db
+      .prepare(`UPDATE ${PASTE_BIN_ITEMS_TABLE} SET ${changes.map(([column]) => `${column} = ?`).join(', ')} WHERE key = ?`)
+      .bind(...changes.map(([_, value]) => value), item.key)
+      .run()
+
+    if (result.meta.changes === 0) {
+      throw new PasteBinItemNotFoundError(`paste bin item with key '${item.key}' not found`)
+    }
+    return this.getPasteBinItem(item.key)
+  }
+
+  /**
+   * @param {Record<string, any>} record
+   * @returns {PasteBinItem}
+   */
+  #recordToPasteBinItem(record) {
+    return {
+      key: record.key,
+      content: record.content,
+      adminPassword: record.admin_password,
+      createdAt: dayjs(record.created_at),
+      expiredAt: record.expired_at ? dayjs(record.expired_at) : null,
+    }
   }
 }
 
@@ -22,6 +97,6 @@ export default class Store {
  * @property {string} key
  * @property {string} content
  * @property {string | null} adminPassword
- * @property {number} createdAt
- * @property {number} expiredAt
+ * @property {Dayjs} createdAt
+ * @property {Dayjs | null} expiredAt
  */
