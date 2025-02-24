@@ -5,6 +5,7 @@ import { isPlainObject, isValidURL } from './utils'
 import { BadRequestError, ForbiddenError, PasteBinItemExistsError, PasteBinItemNotFoundError } from './error'
 
 const KEY_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+const KEY_TYPE_SEP = '-'
 const INITIAL_KEY_LENGTH = 4
 const MAX_KEY_LENGTH = 16
 const ADMIN_PASSWORD_LENGTH = 16
@@ -17,9 +18,9 @@ const nanoid = customAlphabet(KEY_CHARS)
  */
 function parsePasteBinItemKeyReq(keyReq) {
   if (typeof keyReq !== 'string') return null
-  if (!keyReq.includes('/')) return { key: keyReq, type: null }
+  if (!keyReq.includes(KEY_TYPE_SEP)) return { key: keyReq, type: null }
 
-  const [type, key] = keyReq.split('/')
+  const [key, type] = keyReq.split(KEY_TYPE_SEP)
   if (!key) return null
 
   return { key, type }
