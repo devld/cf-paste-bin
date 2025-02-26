@@ -6,6 +6,8 @@ import { BadRequestError, ForbiddenError, PasteBinItemExistsError, PasteBinItemN
 
 const KEY_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 const KEY_TYPE_SEP = '-'
+const ADMIN_PASSWORD_PREFIX = '$'
+
 const INITIAL_KEY_LENGTH = 4
 const MAX_KEY_LENGTH = 16
 const ADMIN_PASSWORD_LENGTH = 16
@@ -14,7 +16,7 @@ const nanoid = customAlphabet(KEY_CHARS)
 
 /**
  * @param {string} keyReq
- * @returns {{ key: string; type: string | null }}
+ * @returns {{ key: string; type: string | null; adminPassword?: string }}
  */
 function parsePasteBinItemKeyReq(keyReq) {
   if (typeof keyReq !== 'string') return null
@@ -22,6 +24,10 @@ function parsePasteBinItemKeyReq(keyReq) {
 
   const [key, type] = keyReq.split(KEY_TYPE_SEP)
   if (!key) return null
+
+  if (type?.startsWith(ADMIN_PASSWORD_PREFIX)) {
+    return { key, type: 'admin', adminPassword: type.slice(ADMIN_PASSWORD_PREFIX.length) }
+  }
 
   return { key, type }
 }
@@ -63,10 +69,10 @@ const routes = [
   {
     method: 'GET',
     pathMatcher: /^\/(?<keyReq>.+)$/,
-    handler: async function getAndRedirect({ params, store }) {
+    handler: async function getAndRedirect({ params, env: { store, getFile } }) {
       const parsedKeyReq = parsePasteBinItemKeyReq(params.keyReq)
       if (!parsedKeyReq) return { status: 404 }
-      const { key, type } = parsedKeyReq
+      const { key, type, adminPassword } = parsedKeyReq
       /** @type {import('./store').PasteBinItem} */
       let item
       try {
@@ -77,19 +83,38 @@ const routes = [
         return { status: 404 }
       }
 
+      /**
+       * @param {any} data
+       * @param {string} templateFile
+       * @param {RouteHandlerResult}
+       */
+      async function renderTemplate(data, templateFile) {
+        const content = await (await getFile(templateFile)).text()
+        return {
+          body: content.replace('/* DATA INJECTION POINT */', `data = ${JSON.stringify(data)}`),
+          rawBody: true,
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        }
+      }
+
+      if (type === 'admin') {
+        if (adminPassword !== item.adminPassword) return { status: 403 }
+        return renderTemplate(item, '/index.html')
+      }
+
       if (item.expiredAt && item.expiredAt.isBefore(dayjs())) {
         return { status: 410 }
       }
 
       if (type === 'u') {
         const url = item.content.trim()
-        if (isValidURL(item.content)) {
-          return { status: 302, headers: { location: url } }
-        }
+        if (isValidURL(item.content)) return { status: 302, headers: { location: url } }
+      }
+      if (type === 'md') {
+        return renderTemplate(item.content, '/render-markdown.html')
       }
 
       return {
-        status: 200,
         body: item.content,
         rawBody: true,
         headers: { 'content-type': 'text/plain; charset=utf-8' },
@@ -99,7 +124,7 @@ const routes = [
   {
     method: 'POST',
     pathMatcher: /^\/$/,
-    handler: async function createPasteBinItem({ query, body, store }) {
+    handler: async function createPasteBinItem({ query, body, env: { store } }) {
       const payload = extractPasteBinItemPayload(query, body)
       let isCustomKey = false
       if (payload.key) {
@@ -134,7 +159,7 @@ const routes = [
   {
     method: 'PATCH',
     pathMatcher: /^\/(?<key>.+)$/,
-    handler: async function updatePasteBinItem({ params, query, body, store }) {
+    handler: async function updatePasteBinItem({ params, query, body, env: { store } }) {
       const key = params.key
       if (!isValidPasteBinItemKey(key)) throw new BadRequestError('Invalid key: ' + key)
 
@@ -148,7 +173,7 @@ const routes = [
         expiredAt: payload.expiredAt,
       })
 
-      return { status: 200, body: updatedItem }
+      return { body: updatedItem }
     },
   },
 ]
@@ -156,17 +181,23 @@ const routes = [
 export default routes
 
 /**
+ * @typedef RouteHandlerEnv
+ * @property {Store} store
+ * @property {(name: string) => Promise<Blob>} getFile
+ */
+
+/**
  * @typedef RouteHandlerArg
  * @property {Record<string, string>} params
  * @property {URLSearchParams} query
  * @property {Headers} headers
  * @property {any} body
- * @property {Store} store
+ * @property {RouteHandlerEnv} env
  */
 
 /**
  * @typedef RouteHandlerResult
- * @property {number} status
+ * @property {number} [status]
  * @property {Record<string, string>} headers
  * @property {any} body
  * @property {boolean} [rawBody]

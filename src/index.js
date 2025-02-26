@@ -35,7 +35,15 @@ export default {
       query: url.searchParams,
       headers: originalRequest.headers,
       body: body,
-      store: new Store(env.DB),
+      env: {
+        store: new Store(env.DB),
+        getFile: async (name) => {
+          const assetUrl = new URL(name, url.origin)
+          const resp = await env.ASSETS.fetch(assetUrl)
+          if (!resp.ok) throw new APIError('File not found')
+          return resp.blob()
+        },
+      },
     }
 
     for (const route of routes) {
