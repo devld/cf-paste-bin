@@ -4,13 +4,208 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Paste Bin</title>
+    <style>
+      body {
+        margin: 0;
+        background-color: #f4f4f4;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      main {
+        max-width: 800px;
+        background-color: #fff;
+        padding: 2em;
+        margin: 2em auto;
+        overflow: hidden;
+      }
+
+      .form {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .form-item {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .form-item > label {
+        flex-shrink: 0;
+        text-align: right;
+      }
+
+      .form-item-content {
+        width: 100%;
+      }
+
+      #content {
+        width: 100%;
+        min-height: 60vh;
+        white-space: pre;
+        resize: vertical;
+      }
+
+      #_adminUrl,
+      #_rendererURL {
+        width: 280px;
+      }
+
+      @media screen and (min-width: 768px) {
+        .form-item {
+          flex-direction: row;
+        }
+
+        .form-item > label {
+          width: 100px;
+        }
+      }
+    </style>
   </head>
   <body>
+    <main>
+      <form id="form" class="form">
+        <div class="form-item">
+          <label for="content">Content:</label>
+          <div class="form-item-content">
+            <textarea required id="content" name="content"></textarea>
+          </div>
+        </div>
+        <div class="form-item">
+          <label for="expiredAt">Expired At:</label>
+          <input id="expiredAt" name="expiredAt" type="datetime-local" />
+        </div>
+        <div class="form-item">
+          <label for="key">Key:</label>
+          <input id="key" name="key" type="text" placeholder="A-Z, a-z, 0-9 (Optional)" />
+        </div>
+        <div class="form-item hidden">
+          <label for="_adminUrl">Admin URL:</label>
+          <input id="_adminUrl" class="focus-auto-select" type="text" readonly />
+        </div>
+        <div class="form-item hidden">
+          <label for="_rendererURL">URL:</label>
+          <div class="form-item-content">
+            <select name="_rendererType" id="_rendererType">
+              <option value="" selected>Text</option>
+              <option value="md">Markdown</option>
+              <option value="u">URL</option>
+            </select>
+            <input id="_rendererURL" class="focus-auto-select" type="text" readonly />
+          </div>
+        </div>
+        <div class="form-item">
+          <button id="_submit" type="submit">Save</button>
+        </div>
+      </form>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.13/dayjs.min.js"></script>
     <script>
       ;(function () {
-        var data = null
-        /* DATA INJECTION POINT */
-        console.log(data)
+        var config = null // INJECTION_POINT
+        var data = null // INJECTION_POINT
+
+        var contentEl = document.querySelector('#content')
+        var expiredAtEl = document.querySelector('#expiredAt')
+        var keyEl = document.querySelector('#key')
+        var submitEl = document.querySelector('#_submit')
+        var adminUrlEl = document.querySelector('#_adminUrl')
+        var rendererTypeEl = document.querySelector('#_rendererType')
+        var rendererUrlEl = document.querySelector('#_rendererURL')
+
+        setData(data)
+
+        // helpers
+
+        function getURL(key, type) {
+          return location.origin + config.PATH_PREFIX + '/' + key + (type ? config.KEY_TYPE_SEP + type : '')
+        }
+
+        function updateRendererURL() {
+          if (!data) return
+          var type = rendererTypeEl.value
+          rendererUrlEl.value = getURL(data.key, type)
+          rendererUrlEl.closest('.form-item').classList.remove('hidden')
+        }
+        rendererTypeEl.addEventListener('change', updateRendererURL)
+
+        function setData(newData) {
+          if (!newData) return
+
+          data = newData
+          contentEl.value = data.content
+          expiredAtEl.value = data.expiredAt ? dayjs(data.expiredAt).format('YYYY-MM-DDTHH:mm') : ''
+          keyEl.value = data.key
+          adminUrlEl.value = getURL(data.key, config.ADMIN_PASSWORD_PREFIX + data.adminPassword)
+          adminUrlEl.closest('.form-item').classList.remove('hidden')
+          updateRendererURL()
+
+          history.replaceState(null, '', adminUrlEl.value)
+        }
+
+        function getFormData() {
+          var data = {
+            content: contentEl.value,
+            expiredAt: expiredAtEl.value ? dayjs(expiredAtEl.value).toDate().getTime() : null,
+            key: keyEl.value,
+          }
+          if (!data.content) return null
+          return data
+        }
+
+        document.querySelector('#form').addEventListener('submit', function (e) {
+          e.preventDefault()
+          var newData = getFormData()
+          if (!newData) return
+
+          var isNew = !data || data.key !== newData.key
+          if (!isNew) {
+            newData.adminPassword = data.adminPassword
+          }
+          submitEl.disabled = true
+          submitEl.dataset.oldText = submitEl.innerText
+          submitEl.innerText = 'Saving...'
+          request(isNew ? 'POST' : 'PATCH', isNew ? '/' : '/' + data.key, newData, function (res) {
+            submitEl.disabled = false
+            submitEl.innerText = submitEl.dataset.oldText
+
+            if (!res.ok) {
+              alert((res.data && res.data.message) || 'Failed with status: ' + res.status)
+              return
+            }
+            setData(res.data)
+          })
+        })
+
+        document.querySelectorAll('input.focus-auto-select').forEach(function (input) {
+          input.addEventListener('focus', function (e) {
+            e.target.select()
+          })
+        })
+
+        function request(method, path, body, onCompleted) {
+          var xhr = new XMLHttpRequest()
+          xhr.open(method, config.PATH_PREFIX + path)
+          if (body) {
+            xhr.setRequestHeader('Content-Type', 'application/json')
+          }
+          xhr.onreadystatechange = function () {
+            if (xhr.readyState !== XMLHttpRequest.DONE) return
+            var text = xhr.responseText
+            onCompleted &&
+              onCompleted({
+                ok: xhr.status >= 200 && xhr.status < 300,
+                status: xhr.status,
+                data: text ? JSON.parse(text) : null,
+              })
+          }
+          xhr.send(body ? JSON.stringify(body) : undefined)
+        }
       })()
     </script>
   </body>

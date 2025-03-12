@@ -19,6 +19,10 @@
         overflow: hidden;
       }
 
+      .updatedAt {
+        opacity: 0.6;
+      }
+
       pre {
         overflow-x: auto;
       }
@@ -55,15 +59,19 @@
     </style>
   </head>
   <body>
-    <main></main>
+    <main>
+      <time class="updatedAt"></time>
+    </main>
     <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/lib/marked.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
     <script>
       ;(function () {
-        var data = null
-        /* DATA INJECTION POINT */
+        var data = null // INJECTION_POINT
         if (!data) return
-        document.querySelector('main').innerHTML = DOMPurify.sanitize(marked.marked(data))
+        var updatedAtEl = document.querySelector('.updatedAt')
+        updatedAtEl.dateTime = data.updatedAt
+        updatedAtEl.innerText = new Date(data.updatedAt).toLocaleString()
+        document.querySelector('main').innerHTML += DOMPurify.sanitize(marked.marked(data.content))
       })()
     </script>
     <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>

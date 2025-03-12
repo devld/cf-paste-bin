@@ -25,24 +25,26 @@ export default class Store {
   }
 
   /**
-   * @param {Omit<PasteBinItem, 'createdAt'>} item
+   * @param {Omit<PasteBinItem, 'createdAt' | 'updatedAt'>} item
    * @returns {Promise<PasteBinItem>}
    * @throws {PasteBinItemExistsError}
    */
   async createPasteBinItem(item) {
+    const now = dayjs()
     try {
       /** @type {PasteBinItem} */
-      const newItem = { ...item, createdAt: dayjs() }
+      const newItem = { ...item, createdAt: now, updatedAt: now }
       await this.#db
         .prepare(
-          `INSERT INTO ${PASTE_BIN_ITEMS_TABLE}(\`key\`, \`content\`, \`admin_password\`, \`created_at\`, \`expired_at\`) VALUES(?, ?, ?, ?, ?)`
+          `INSERT INTO ${PASTE_BIN_ITEMS_TABLE}(\`key\`, \`content\`, \`admin_password\`, \`expired_at\`, \`created_at\`, \`updated_at\`) VALUES(?, ?, ?, ?, ?, ?)`
         )
         .bind(
           newItem.key,
           newItem.content,
           newItem.adminPassword,
+          newItem.expiredAt?.toDate().getTime() || null,
           newItem.createdAt.toDate().getTime(),
-          newItem.expiredAt?.toDate().getTime() || null
+          newItem.updatedAt.toDate().getTime()
         )
         .run()
       return newItem
@@ -61,7 +63,7 @@ export default class Store {
    */
   async updatePasteBinItem(item) {
     /** @type {[string, any][]} */
-    const changes = []
+    const changes = [['updated_at', Date.now()]]
     if (item.content !== undefined) changes.push(['content', item.content])
     if (item.expiredAt !== undefined) changes.push(['expired_at', item.expiredAt?.toDate().getTime() || null])
 
@@ -86,8 +88,9 @@ export default class Store {
       key: record.key,
       content: record.content,
       adminPassword: record.admin_password,
-      createdAt: dayjs(record.created_at),
       expiredAt: record.expired_at ? dayjs(record.expired_at) : null,
+      createdAt: dayjs(record.created_at),
+      updatedAt: dayjs(record.updated_at),
     }
   }
 }
@@ -97,6 +100,7 @@ export default class Store {
  * @property {string} key
  * @property {string} content
  * @property {string | null} adminPassword
- * @property {Dayjs} createdAt
  * @property {Dayjs | null} expiredAt
+ * @property {Dayjs} createdAt
+ * @property {Dayjs} updatedAt
  */

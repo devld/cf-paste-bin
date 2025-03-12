@@ -43,6 +43,7 @@ export default {
           if (!resp.ok) throw new APIError('File not found')
           return resp.blob()
         },
+        PATH_PREFIX: env.PATH_PREFIX,
       },
     }
 
@@ -55,9 +56,7 @@ export default {
       matchedRoute = route
     }
 
-    if (!matchedRoute) {
-      return env.ASSETS.fetch(url, { method, headers: originalRequest.headers })
-    }
+    if (!matchedRoute) return new Response(null, { status: 404 })
 
     console.log(`handle ${matchedRoute.handler.name}: ${url}`)
     /** @type {import('./routes').RouteHandlerResult} */
