@@ -35,9 +35,15 @@
         gap: 8px;
       }
 
-      .form-item > label {
+      .form-item > label,
+      .form-item-label {
         flex-shrink: 0;
-        text-align: right;
+      }
+
+      .form-item-label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5em;
       }
 
       .form-item-content {
@@ -49,6 +55,8 @@
         min-height: 60vh;
         white-space: pre;
         resize: vertical;
+        padding: 8px;
+        box-sizing: border-box;
       }
 
       #_adminUrl,
@@ -61,8 +69,10 @@
           flex-direction: row;
         }
 
-        .form-item > label {
+        .form-item > label,
+        .form-item-label {
           width: 100px;
+          text-align: right;
         }
       }
     </style>
@@ -71,7 +81,10 @@
     <main>
       <form id="form" class="form">
         <div class="form-item">
-          <label for="content">Content:</label>
+          <div class="form-item-label">
+            <label for="content">Content:</label>
+            <button id="_uploadFile" type="button">Upload File</button>
+          </div>
           <div class="form-item-content">
             <textarea required id="content" name="content"></textarea>
           </div>
@@ -95,6 +108,7 @@
               <option value="" selected>Text</option>
               <option value="md">Markdown</option>
               <option value="u">URL</option>
+              <option value="f">File</option>
             </select>
             <input id="_rendererURL" class="focus-auto-select" type="text" readonly />
           </div>
@@ -111,6 +125,7 @@
         var data = null // INJECTION_POINT
 
         var contentEl = document.querySelector('#content')
+        var uploadFileEl = document.querySelector('#_uploadFile')
         var expiredAtEl = document.querySelector('#expiredAt')
         var keyEl = document.querySelector('#key')
         var submitEl = document.querySelector('#_submit')
@@ -118,45 +133,53 @@
         var rendererTypeEl = document.querySelector('#_rendererType')
         var rendererUrlEl = document.querySelector('#_rendererURL')
 
+        var defaultRendererTypeMatchers = [
+          { pattern: /^https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$/, type: 'u' },
+          { pattern: /^<a class="cf-paste-bin-ref"[^>]*data-ref-type="f"/, type: 'f' },
+        ]
+
         setData(data)
 
-        // helpers
+        uploadFileEl.addEventListener('click', function () {
+          var input = document.createElement('input')
+          input.type = 'file'
+          input.onchange = function () {
+            var file = input.files[0]
+            if (!file) return
 
-        function getURL(key, type) {
-          return location.origin + config.PATH_PREFIX + '/' + key + (type ? config.KEY_TYPE_SEP + type : '')
-        }
+            uploadFileEl.dataset.oldText = uploadFileEl.innerText
+            uploadFileEl.innerText = 'Uploading...'
+            uploadFileEl.disabled = true
 
-        function updateRendererURL() {
-          if (!data) return
-          var type = rendererTypeEl.value
-          rendererUrlEl.value = getURL(data.key, type)
-          rendererUrlEl.closest('.form-item').classList.remove('hidden')
-        }
-        rendererTypeEl.addEventListener('change', updateRendererURL)
+            request('POST', '/file', null, function (res) {
+              if (!res.ok) return
 
-        function setData(newData) {
-          if (!newData) return
+              var xhr = new XMLHttpRequest()
+              xhr.open('PUT', res.data.url)
+              xhr.upload.onprogress = function (e) {
+                uploadFileEl.innerText = 'Uploading... ' + ((e.loaded / e.total || 0) * 100).toFixed(0) + '%'
+              }
+              xhr.onreadystatechange = function () {
+                if (xhr.readyState !== XMLHttpRequest.DONE) return
 
-          data = newData
-          contentEl.value = data.content
-          expiredAtEl.value = data.expiredAt ? dayjs(data.expiredAt).format('YYYY-MM-DDTHH:mm') : ''
-          keyEl.value = data.key
-          adminUrlEl.value = getURL(data.key, config.ADMIN_PASSWORD_PREFIX + data.adminPassword)
-          adminUrlEl.closest('.form-item').classList.remove('hidden')
-          updateRendererURL()
+                uploadFileEl.innerText = uploadFileEl.dataset.oldText
+                uploadFileEl.disabled = false
 
-          history.replaceState(null, '', adminUrlEl.value)
-        }
+                if (xhr.status !== 200) {
+                  alert('Failed to upload file with status: ' + xhr.status)
+                  return
+                }
 
-        function getFormData() {
-          var data = {
-            content: contentEl.value,
-            expiredAt: expiredAtEl.value ? dayjs(expiredAtEl.value).toDate().getTime() : null,
-            key: keyEl.value,
+                contentEl.value =
+                  getRefLink('', 'f', 'Download ' + file.name, { fileKey: res.data.key, filename: file.name }) +
+                  '\n\n---\n' +
+                  contentEl.value
+              }
+              xhr.send(file)
+            })
           }
-          if (!data.content) return null
-          return data
-        }
+          input.click()
+        })
 
         document.querySelector('#form').addEventListener('submit', function (e) {
           e.preventDefault()
@@ -188,6 +211,8 @@
           })
         })
 
+        // helpers
+
         function request(method, path, body, onCompleted) {
           var xhr = new XMLHttpRequest()
           xhr.open(method, config.PATH_PREFIX + path)
@@ -205,6 +230,64 @@
               })
           }
           xhr.send(body ? JSON.stringify(body) : undefined)
+        }
+
+        function getURL(key, type) {
+          return location.origin + config.PATH_PREFIX + '/' + key + (type ? config.KEY_TYPE_SEP + type : '')
+        }
+
+        function updateRendererURL() {
+          if (!data) return
+          var type = rendererTypeEl.value
+          rendererUrlEl.value = getURL(data.key, type)
+          rendererUrlEl.closest('.form-item').classList.remove('hidden')
+        }
+        rendererTypeEl.addEventListener('change', updateRendererURL)
+
+        function setData(newData) {
+          if (!newData) return
+
+          data = newData
+          contentEl.value = data.content
+          expiredAtEl.value = data.expiredAt ? dayjs(data.expiredAt).format('YYYY-MM-DDTHH:mm') : ''
+          keyEl.value = data.key
+          adminUrlEl.value = getURL(data.key, config.ADMIN_PASSWORD_PREFIX + data.adminPassword)
+          adminUrlEl.closest('.form-item').classList.remove('hidden')
+
+          for (var i = 0; i < defaultRendererTypeMatchers.length; i++) {
+            if (defaultRendererTypeMatchers[i].pattern.test(data.content)) {
+              rendererTypeEl.value = defaultRendererTypeMatchers[i].type
+              break
+            }
+          }
+
+          updateRendererURL()
+
+          history.replaceState(null, '', adminUrlEl.value)
+        }
+
+        function getFormData() {
+          var data = {
+            content: contentEl.value,
+            expiredAt: expiredAtEl.value ? dayjs(expiredAtEl.value).toDate().getTime() : null,
+            key: keyEl.value,
+          }
+          if (!data.content) return null
+          return data
+        }
+
+        function getRefLink(refKey, refType, label, attrs) {
+          var a = document.createElement('a')
+          a.innerText = label
+          a.className = 'cf-paste-bin-ref'
+          var attrKeys = Object.keys(attrs)
+          for (var i = 0; i < attrKeys.length; i++) {
+            a.dataset[attrKeys[i]] = attrs[attrKeys[i]]
+          }
+          a.dataset.refKey = refKey
+          a.dataset.refType = refType
+          a.href = '#'
+          return a.outerHTML
         }
       })()
     </script>

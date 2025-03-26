@@ -66,12 +66,27 @@
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
     <script>
       ;(function () {
+        var config = null // INJECTION_POINT
         var data = null // INJECTION_POINT
         if (!data) return
+
         var updatedAtEl = document.querySelector('.updatedAt')
         updatedAtEl.dateTime = data.updatedAt
         updatedAtEl.innerText = new Date(data.updatedAt).toLocaleString()
-        document.querySelector('main').innerHTML += DOMPurify.sanitize(marked.marked(data.content))
+        var mainEl = document.querySelector('main')
+        mainEl.innerHTML += DOMPurify.sanitize(marked.marked(data.content))
+
+        function getURL(key, type) {
+          return config.PATH_PREFIX + '/' + key + (type ? config.KEY_TYPE_SEP + type : '')
+        }
+
+        var refLinks = mainEl.querySelectorAll('a.cf-paste-bin-ref')
+        for (var i = 0; i < refLinks.length; i++) {
+          var refLink = refLinks[i]
+          if (!refLink.dataset.refKey) refLink.dataset.refKey = data.key
+          refLink.href = getURL(refLink.dataset.refKey, refLink.dataset.refType)
+          refLink.target = '_blank'
+        }
       })()
     </script>
     <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>

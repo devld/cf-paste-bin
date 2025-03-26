@@ -5,7 +5,7 @@ import routes from './routes'
 import { APIError } from './error'
 
 /**
- * @type {ExportedHandler<{ ASSETS: { fetch: typeof fetch }; PATH_PREFIX: string }>}
+ * @type {ExportedHandler<{ ASSETS: { fetch: typeof fetch } }>}
  */
 export default {
   async fetch(originalRequest, env) {
@@ -44,6 +44,11 @@ export default {
           return resp.blob()
         },
         PATH_PREFIX: env.PATH_PREFIX,
+        S3_ENDPOINT: env.S3_ENDPOINT,
+        S3_REGION: env.S3_REGION,
+        S3_BUCKET: env.S3_BUCKET,
+        S3_ACCESS_KEY: env.S3_ACCESS_KEY,
+        S3_SECRET_KEY: env.S3_SECRET_KEY,
       },
     }
 
@@ -74,9 +79,12 @@ export default {
     if (!result) return new Response(null, { status: 204 })
     if (result.rawBody) return new Response(result.body, { status: result.status, headers: result.headers })
 
+    const finalHeaders = { ...result.headers }
+    if (result.body !== undefined) finalHeaders['content-type'] = 'application/json'
+
     return new Response(result.body !== undefined ? JSON.stringify(result.body) : undefined, {
       status: result.status,
-      headers: { ...result.headers, 'content-type': result.body !== undefined ? 'application/json' : undefined },
+      headers: finalHeaders,
     })
   },
 }

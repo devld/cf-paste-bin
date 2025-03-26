@@ -29,7 +29,11 @@
    * Environment Variables
    * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
    */
-  "vars": { "PATH_PREFIX": "/r" },
+  "vars": {
+    "PATH_PREFIX": "/r",
+    "S3_REGION": "auto",
+    "S3_BUCKET": "cf-paste-bin"
+  },
   /**
    * Note: Use secrets to store sensitive data.
    * https://developers.cloudflare.com/workers/configuration/secrets/

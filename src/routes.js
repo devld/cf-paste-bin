@@ -4,6 +4,8 @@ import Store from './store'
 import { isPlainObject, isValidURL } from './utils'
 import { BadRequestError, ForbiddenError, PasteBinItemExistsError, PasteBinItemNotFoundError } from './error'
 
+import { fileRoutes, fileTypeHandlers } from './routes-file'
+
 const KEY_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 const KEY_TYPE_SEP = '-'
 const ADMIN_PASSWORD_PREFIX = '$'
@@ -15,9 +17,11 @@ const ADMIN_PASSWORD_LENGTH = 16
 const nanoid = customAlphabet(KEY_CHARS)
 
 /** @type {Route[]} */
-const extraRouteHandlers = []
+const extraRouteHandlers = [...fileRoutes]
 /** @type {Record<string, PasteBinItemTypeHandler>} */
-const extraPasteBinItemTypeHandlers = {}
+const extraPasteBinItemTypeHandlers = {
+  ...fileTypeHandlers,
+}
 
 /**
  * @type {Record<string, PasteBinItemTypeHandler>}
@@ -29,7 +33,7 @@ const pasteBinItemsTypeHandlers = {
   },
   md: async (data, env) =>
     renderTemplate('/render-markdown.html', env, {
-      data: { content: data.content, createdAt: data.createdAt, updatedAt: data.updatedAt },
+      data: { key: data.key, content: data.content, createdAt: data.createdAt, updatedAt: data.updatedAt },
     }),
   ...extraPasteBinItemTypeHandlers,
 }
@@ -210,6 +214,12 @@ function extractPasteBinItemPayload(query, body) {
  * @property {Store} store
  * @property {(name: string) => Promise<Blob>} getFile
  * @property {string} PATH_PREFIX
+ *
+ * @property {string} S3_ENDPOINT
+ * @property {string} S3_REGION
+ * @property {string} S3_BUCKET
+ * @property {string} S3_ACCESS_KEY
+ * @property {string} S3_SECRET_KEY
  */
 
 /**
