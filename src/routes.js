@@ -14,6 +14,26 @@ const ADMIN_PASSWORD_LENGTH = 16
 
 const nanoid = customAlphabet(KEY_CHARS)
 
+/** @type {Route[]} */
+const extraRouteHandlers = []
+/** @type {Record<string, PasteBinItemTypeHandler>} */
+const extraPasteBinItemTypeHandlers = {}
+
+/**
+ * @type {Record<string, PasteBinItemTypeHandler>}
+ */
+const pasteBinItemsTypeHandlers = {
+  u: async (data) => {
+    const url = data.content.trim()
+    if (isValidURL(data.content)) return { status: 302, headers: { location: url } }
+  },
+  md: async (data, env) =>
+    renderTemplate('/render-markdown.html', env, {
+      data: { content: data.content, createdAt: data.createdAt, updatedAt: data.updatedAt },
+    }),
+  ...extraPasteBinItemTypeHandlers,
+}
+
 /**
  * @type {Route[]}
  */
@@ -46,15 +66,9 @@ const routes = [
         return { status: 410 }
       }
 
-      if (type === 'u') {
-        const url = data.content.trim()
-        if (isValidURL(data.content)) return { status: 302, headers: { location: url } }
-      }
-      if (type === 'md') {
-        return renderTemplate('/render-markdown.html', env, {
-          data: { content: data.content, createdAt: data.createdAt, updatedAt: data.updatedAt },
-        })
-      }
+      const typeHandler = type ? pasteBinItemsTypeHandlers[type] : null
+      const typeResp = typeHandler ? await typeHandler(data, env) : null
+      if (typeResp) return typeResp
 
       return {
         body: data.content,
@@ -118,6 +132,7 @@ const routes = [
       return { body: updatedItem }
     },
   },
+  ...extraRouteHandlers,
 ]
 
 export default routes
@@ -219,4 +234,11 @@ function extractPasteBinItemPayload(query, body) {
  * @property {'GET'|'POST'|'PATCH'|'DELETE'} method
  * @property {RegExp} pathMatcher
  * @property {(arg: RouteHandlerArg) => Promise<RouteHandlerResult | undefined> | RouteHandlerResult | undefined} handler
+ */
+
+/**
+ * @callback PasteBinItemTypeHandler
+ * @param {import('./store').PasteBinItem} data
+ * @param {RouteHandlerEnv} env
+ * @returns {Promise<RouteHandlerResult | undefined>}
  */
